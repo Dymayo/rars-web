@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>RARS Web</title>
+  <meta name="description" content="RARS 1.6 (RISC-V Assembler and Runtime Simulator) running in the browser via CheerpJ." />
+  <script src="https://cjrtnc.leaningtech.com/4.3/loader.js"></script>
+  <style>
+    :root {
+      --bg: #f4f4f2; --bar: #ffffff; --fg: #1d1d1f; --muted: #6b6b70;
+      --border: #dcdcd8; --accent: #2f5d9e; --accent-fg: #ffffff;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg: #161618; --bar: #1f1f22; --fg: #ececee; --muted: #9a9aa0;
+              --border: #333338; --accent: #6c9be0; --accent-fg: #0d0d0f; }
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+      font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+    body { display: flex; flex-direction: column; }
+    header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+      padding: 8px 16px; background: var(--bar); border-bottom: 1px solid var(--border); }
+    header h1 { font-size: 15px; margin: 0; font-weight: 600; }
+    header .hint { color: var(--muted); font-size: 12.5px; flex: 1; min-width: 200px; }
+    header code { font-size: 12px; background: var(--bg); padding: 1px 5px; border-radius: 4px; }
+    button, label.btn { font: inherit; font-size: 13px; padding: 5px 12px; border-radius: 6px;
+      border: 1px solid var(--accent); background: var(--accent); color: var(--accent-fg); cursor: pointer; }
+    button.ghost { background: transparent; color: var(--fg); border-color: var(--border); }
+    #display { flex: 1; position: relative; min-height: 0; }
+    #loading { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted);
+      pointer-events: none; }
+    dialog { border: 1px solid var(--border); border-radius: 10px; background: var(--bar); color: var(--fg);
+      max-width: 560px; padding: 20px 24px; }
+    dialog h2 { margin-top: 0; font-size: 17px; }
+    dialog li { margin: 4px 0; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>RARS 1.6 · Web</h1>
+    <span class="hint">Examples: <code>/str/examples</code> · Save your work in <code>/files</code> (kept in this browser) · Save to <code>/files/downloads</code> to download it</span>
+    <label class="btn" for="import">Import .asm</label>
+    <input id="import" type="file" accept=".asm,.s,.txt" multiple hidden />
+    <button class="ghost" id="help-btn">Help</button>
+  </header>
+  <div id="display"><div id="loading">Loading the Java runtime… (first load can take ~20 s)</div></div>
+
+  <dialog id="help">
+    <h2>Using RARS in the browser</h2>
+    <ul>
+      <li><b>Open an example:</b> File → Open, then go to <code>/str/examples</code>.</li>
+      <li><b>Open your own file:</b> click <b>Import .asm</b> above; it appears in <code>/str/import</code>. You can also use the ↑ button on any RARS window title bar (goes to <code>/files/uploads</code>).</li>
+      <li><b>Save:</b> File → Save as… into <code>/files</code>. It stays in this browser (IndexedDB) between visits.</li>
+      <li><b>Download a file to your computer:</b> save it into <code>/files/downloads</code>; the browser downloads it automatically.</li>
+      <li><code>/str</code> is read-only: to edit an example, save it under <code>/files</code> first.</li>
+    </ul>
+    <p style="color:var(--muted);font-size:12.5px">RARS is MIT-licensed (github.com/TheThirdOne/rars). Java runs in the browser thanks to CheerpJ by Leaning Technologies.</p>
+    <form method="dialog"><button>Close</button></form>
+  </dialog>
+
+  <script>
+    const EXAMPLES = ["bonjour.asm", "factoriel.asm", "fonc1.asm", "somme_entiers.s"];
+    let ready = false;
+    const pending = [];
+
+    async function addExamples() {
+      for (const name of EXAMPLES) {
+        try {
+          const res = await fetch("examples/" + name);
+          if (res.ok) cheerpOSAddStringFile("/str/examples/" + name, new Uint8Array(await res.arrayBuffer()));
+        } catch (e) { console.warn("Could not load example", name, e); }
+      }
+    }
+
+    async function importFiles(files) {
+      for (const f of files) {
+        cheerpOSAddStringFile("/str/import/" + f.name, new Uint8Array(await f.arrayBuffer()));
+      }
+      alertBar(files.length + " file(s) imported → /str/import");
+    }
+
+    function alertBar(msg) {
+      const hint = document.querySelector(".hint");
+      const old = hint.innerHTML;
+      hint.textContent = msg;
+      setTimeout(() => (hint.innerHTML = old), 4000);
+    }
+
+    document.getElementById("import").addEventListener("change", (e) => {
+      const files = [...e.target.files];
+      if (ready) importFiles(files); else pending.push(...files);
+      e.target.value = "";
+    });
+    const help = document.getElementById("help");
+    document.getElementById("help-btn").addEventListener("click", () => help.showModal());
+
+    (async () => {
+      await cheerpjInit({ version: 8, javaProperties: ["user.home=/files", "user.dir=/files"] });
+      ready = true;
+      await addExamples();
+      if (pending.length) importFiles(pending.splice(0));
+      const display = document.getElementById("display");
+      cheerpjCreateDisplay(-1, -1, display);
+      document.getElementById("loading").remove();
+      await cheerpjRunJar("/app" + new URL("rars.jar", location.href).pathname);
+    })();
+  </script>
+</body>
+</html>
